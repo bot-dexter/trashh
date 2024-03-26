@@ -394,15 +394,15 @@ void HydroSourceStrings::get_hydro_energy_source(
                                      it->eta_s_right - it->eta_s_left));
         eta_frac = std::max(0., std::min(1., eta_frac));
 
-        const double x_perp = getStringTransverseCoord(it->x_pl, it->x_pr,
-                                                       eta_frac);
-        double x_dis = x - x_perp;
-        if (std::abs(x_dis) > skip_dis_x) continue;
+        double x_dis_l = x - it->x_pl;
+        double x_dis_r = x - it->x_pr;
+        if (std::abs(x_dis_l) > skip_dis_x
+            && std::abs(x_dis_r) > skip_dis_x) continue;
 
-        const double y_perp = getStringTransverseCoord(it->y_pl, it->y_pr,
-                                                       eta_frac);
-        double y_dis = y - y_perp;
-        if (std::abs(y_dis) > skip_dis_x) continue;
+        double y_dis_l = y - it->y_pl;
+        double y_dis_r = y - it->y_pr;
+        if (std::abs(y_dis_l) > skip_dis_x
+            && std::abs(y_dis_r) > skip_dis_x) continue;
 
         // calculate the crossed string segments in the eta direction
         // normally, there will be two segments
@@ -458,13 +458,19 @@ void HydroSourceStrings::get_hydro_energy_source(
             }
         }
 
-        double exp_xperp = exp(-(x_dis*x_dis + y_dis*y_dis)
-                                /(2.*sigma_x*sigma_x));
+        double exp_xperp = (
+            (1. - eta_frac)*exp( - (x_dis_l*x_dis_l + y_dis_l*y_dis_l)
+                                /(2.*sigma_x*sigma_x))
+            + eta_frac*exp( - (x_dis_r*x_dis_r + y_dis_r*y_dis_r)
+                           /(2.*sigma_x*sigma_x))
+        );
         double cosh_perp = (
-            cosh(preEqFlowFactor_*sqrt(x_dis*x_dis + y_dis*y_dis)));
+            cosh(preEqFlowFactor_*sqrt(it->x_perp*it->x_perp
+                                       + it->y_perp*it->y_perp)));
         double sinh_perp = (
-            sinh(preEqFlowFactor_*sqrt(x_dis*x_dis + y_dis*y_dis)));
-        double phi_perp = atan2(y_dis, x_dis);
+            sinh(preEqFlowFactor_*sqrt(it->x_perp*it->x_perp
+                                       + it->y_perp*it->y_perp)));
+        double phi_perp = atan2(it->y_perp, it->x_perp);
 
         double e_local = exp_tau*exp_xperp*exp_eta_s*it->norm;
         double Delta_eta = it->eta_s_right - it->eta_s_left;
@@ -484,8 +490,9 @@ void HydroSourceStrings::get_hydro_energy_source(
                       << std::endl;
             std::cout << exp_tau << "  " << exp_xperp << "  "
                       << exp_eta_s << "  " << it->norm << std::endl;
-            std::cout << x_dis << "  " << y_dis << "  " << sigma_x << std::endl;
-            std::cout << it->x_pl << "  " << it->x_pr << "  " << eta_frac
+            std::cout << x_dis_l << "  " << x_dis_r << "  "
+                      << sigma_x << std::endl;
+            std::cout << it->x_pr << "  " << it->x_pr << "  " << eta_frac
                       << "  " << it->eta_s_right << "  "
                       << it->eta_s_left << std::endl;
         }
