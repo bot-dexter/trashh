@@ -9,6 +9,7 @@
 #include "eos_best.h"
 #include "eos_neos.h"
 #include "eos_UH.h"
+#include "eos_4D.h"
 #include <iostream>
 #include <memory>
 
@@ -29,6 +30,8 @@ EOS::EOS(const int eos_id_in) : eos_id(eos_id_in)  {
         eos_ptr = std::unique_ptr<EOS_BEST> (new EOS_BEST ());
     } else if (eos_id == 19) {
         eos_ptr = std::unique_ptr<EOS_UH> (new EOS_UH ());
+    } else if (eos_id == 20) {
+            eos_ptr = std::unique_ptr<EOS_4D> (new EOS_4D ());
     } else {
         std::cout << "No EOS for eos_id = " << std::endl;
         exit(1);

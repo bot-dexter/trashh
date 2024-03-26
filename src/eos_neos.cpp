@@ -239,19 +239,22 @@ void EOS_neos::initialize_eos() {
 }
 
 
-double EOS_neos::p_e_func(double e, double rhob) const {
+double EOS_neos::p_e_func(
+        double e, double rhob, double rhoq, double rhos) const {
     return(get_dpOverde3(e, rhob));
 }
 
 
-double EOS_neos::p_rho_func(double e, double rhob) const {
+double EOS_neos::p_rho_func(
+        double e, double rhob, double rhoq, double rhos) const {
     return(get_dpOverdrhob2(e, rhob));
 }
 
 
 //! This function returns the local temperature in [1/fm]
 //! input local energy density eps [1/fm^4] and rhob [1/fm^3]
-double EOS_neos::get_temperature(double e, double rhob) const {
+double EOS_neos::get_temperature(
+        double e, double rhob, double rhoq, double rhos) const {
     int table_idx = get_table_idx(e);
     double T5 = interpolate2D(e, std::abs(rhob), table_idx,
                               temperature_tb);  // 1/fm^5
@@ -263,7 +266,8 @@ double EOS_neos::get_temperature(double e, double rhob) const {
 
 //! This function returns the local pressure in [1/fm^4]
 //! the input local energy density [1/fm^4], rhob [1/fm^3]
-double EOS_neos::get_pressure(double e, double rhob) const {
+double EOS_neos::get_pressure(
+        double e, double rhob, double rhoq, double rhos) const {
     int table_idx = get_table_idx(e);
     double f = interpolate2D(e, std::abs(rhob), table_idx, pressure_tb);
     f = std::max(Util::small_eps, f);
@@ -271,22 +275,25 @@ double EOS_neos::get_pressure(double e, double rhob) const {
 }
 
 
-void EOS_neos::get_pressure_with_gradients(double e, double rhob,
-        double &p, double &dpde, double &dpdrhob, double &cs2) const {
+void EOS_neos::get_pressure_with_gradients(
+        double e, double rhob, double rhoq, double rhos,
+        double &p, double &dpde, double &dpdrhob, double &dpdrhoq,
+        double &dpdrhos) const {
     int table_idx = get_table_idx(e);
     interpolate2D_with_gradients(e, std::abs(rhob), table_idx, pressure_tb,
                                  p, dpde, dpdrhob);
     p = std::max(Util::small_eps, p);
     //dpde = std::max(Util::small_eps, dpde);
     //dpdrhob = std::max(Util::small_eps, dpdrhob);
-    cs2 = dpde + rhob/(e + p + Util::small_eps)*dpdrhob;
-    cs2 = std::max(0.01, std::min(1./3, cs2));
+    dpdrhoq = 0.;
+    dpdrhos = 0.;
 }
 
 
 //! This function returns the local baryon chemical potential  mu_B in [1/fm]
 //! input local energy density eps [1/fm^4] and rhob [1/fm^3]
-double EOS_neos::get_muB(double e, double rhob) const {
+double EOS_neos::get_muB(
+        double e, double rhob, double rhoq, double rhos) const {
     int table_idx = get_table_idx(e);
     double sign = rhob/(std::abs(rhob) + Util::small_eps);
     double mu = sign*interpolate2D(e, std::abs(rhob), table_idx,
@@ -297,7 +304,8 @@ double EOS_neos::get_muB(double e, double rhob) const {
 
 //! This function returns the local baryon chemical potential  mu_B in [1/fm]
 //! input local energy density eps [1/fm^4] and rhob [1/fm^3]
-double EOS_neos::get_muS(double e, double rhob) const {
+double EOS_neos::get_muS(
+        double e, double rhob, double rhoq, double rhos) const {
     if (!get_flag_muS()) return(0.0);
     int table_idx = get_table_idx(e);
     double sign = rhob/(std::abs(rhob) + Util::small_eps);
@@ -309,7 +317,8 @@ double EOS_neos::get_muS(double e, double rhob) const {
 
 //! This function returns the local baryon chemical potential  mu_B in [1/fm]
 //! input local energy density eps [1/fm^4] and rhob [1/fm^3]
-double EOS_neos::get_muQ(double e, double rhob) const {
+double EOS_neos::get_muQ(
+        double e, double rhob, double rhoq, double rhos) const {
     if (!get_flag_muQ()) return(0.0);
     int table_idx = get_table_idx(e);
     double sign = rhob/(std::abs(rhob) + Util::small_eps);
@@ -319,7 +328,8 @@ double EOS_neos::get_muQ(double e, double rhob) const {
 }
 
 
-double EOS_neos::get_s2e(double s, double rhob) const {
+double EOS_neos::get_s2e(
+        double s, double rhob, double rhoq, double rhos) const {
     double e = get_s2e_finite_rhob(s, rhob);
     return(e);
 }

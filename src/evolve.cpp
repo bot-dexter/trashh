@@ -34,7 +34,6 @@ Evolve::Evolve(const EOS &eosIn, InitData &DATA_in,
         initialize_freezeout_surface_info();
     }
     hydro_source_terms_ptr = hydro_source_ptr_in;
-
 }
 
 // master control function for hydrodynamic evolution
@@ -49,6 +48,8 @@ int Evolve::EvolveIt(Fields &arenaFieldsPrev, Fields &arenaFieldsCurr,
     }
 
     FO_nBvsEta_.resize(arenaFieldsCurr.nEta(), 0);
+    FO_nQvsEta_.resize(arenaFieldsCurr.nEta(), 0);
+    FO_nSvsEta_.resize(arenaFieldsCurr.nEta(), 0);
 
     // main loop starts ...
     int    itmax = DATA.nt;
@@ -289,6 +290,8 @@ int Evolve::EvolveIt(Fields &arenaFieldsPrev, Fields &arenaFieldsCurr,
             double eta = (DATA.delta_eta)*ieta - (DATA.eta_size)/2.0;
             FOinfo << std::scientific << std::setprecision(5)
                    << eta << "  " << FO_nBvsEta_[ieta]/DATA.delta_eta
+                   << "  " << FO_nQvsEta_[ieta]/DATA.delta_eta
+                   << "  " << FO_nSvsEta_[ieta]/DATA.delta_eta
                    << std::endl;
         }
         FOinfo.close();
@@ -306,6 +309,8 @@ void Evolve::store_previous_step_for_freezeout(Fields &arenaCurr,
                                                Fields &arenaFreeze) {
     arenaFreeze.e_ = arenaCurr.e_;
     arenaFreeze.rhob_ = arenaCurr.rhob_;
+    arenaFreeze.rhoq_ = arenaCurr.rhoq_;
+    arenaFreeze.rhos_ = arenaCurr.rhos_;
     arenaFreeze.piBulk_ = arenaCurr.piBulk_;
     arenaFreeze.u_ = arenaCurr.u_;
     arenaFreeze.Wmunu_ = arenaCurr.Wmunu_;
@@ -415,8 +420,9 @@ int Evolve::FindFreezeOutSurface_Cornelius_XY(double tau, int ieta,
                 fluid_cube[i][j][k] = new Cell_small[2];
                 fluid_aux_cube[i][j][k] = new Cell_aux[2];
                 cube[i][j][k] = new double[2];
-                for (int l = 0; l < 2; l++)
+                for (int l = 0; l < 2; l++){
                     cube[i][j][k][l] = 0.0;
+                }
             }
         }
     }
@@ -626,24 +632,24 @@ int Evolve::FindFreezeOutSurface_Cornelius_XY(double tau, int ieta,
 
                 // 4-dimension interpolation done
                 const double TFO = eos.get_temperature(epsFO,
-                                                       fluid_center.rhob);
+                                                       fluid_center.rhob, fluid_center.rhoq, fluid_center.rhos);
                 if (TFO < 0) {
                     music_message << "TFO=" << TFO
                                   << "<0. ERROR. exiting.";
                     music_message.flush("error");
                     exit(1);
                 }
-                const double muB = eos.get_muB(epsFO, fluid_center.rhob);
-                const double muS = eos.get_muS(epsFO, fluid_center.rhob);
-                const double muQ = eos.get_muQ(epsFO, fluid_center.rhob);
+                const double muB = eos.get_muB(epsFO, fluid_center.rhob, fluid_center.rhoq, fluid_center.rhos);
+                const double muS = eos.get_muS(epsFO, fluid_center.rhob, fluid_center.rhoq, fluid_center.rhos);
+                const double muQ = eos.get_muQ(epsFO, fluid_center.rhob, fluid_center.rhoq, fluid_center.rhos);
 
-                const double pressure = eos.get_pressure(epsFO,
-                                                         fluid_center.rhob);
+                const double pressure = eos.get_pressure(epsFO, fluid_center.rhob, 
+                        fluid_center.rhoq, fluid_center.rhos);
                 const double eps_plus_p_over_T_FO = (epsFO + pressure)/TFO;
 
                 // finally output results !!!!
                 if (surface_in_binary) {
-                    const int FOsize = 34 + DATA.output_vorticity*(24 + 14);
+                    const int FOsize = 36 + DATA.output_vorticity*(24 + 14);
                     float array[FOsize];
                     array[0] = static_cast<float>(tau_center);
                     array[1] = static_cast<float>(x_center);
@@ -659,41 +665,35 @@ int Evolve::FindFreezeOutSurface_Cornelius_XY(double tau, int ieta,
                     array[15] = static_cast<float>(muS);
                     array[16] = static_cast<float>(muQ);
                     array[17] = static_cast<float>(eps_plus_p_over_T_FO);
-                    for (int ii = 0; ii < 10; ii++) {
-                        array[18+ii] = static_cast<float>(
-                                                    fluid_center.Wmunu[ii]);
-                    }
-                    array[28] = static_cast<float>(fluid_center.pi_b);
-                    array[29] = static_cast<float>(fluid_center.rhob);
-                    for (int ii = 0; ii < 4; ii++) {
-                        array[30+ii] = static_cast<float>(
-                                                fluid_center.Wmunu[10+ii]);
-                    }
+                    for (int ii = 0; ii < 10; ii++)
+                        array[18+ii] = static_cast<float>(fluid_center.Wmunu[ii]);
+                    array[28] = fluid_center.pi_b;
+                    array[29] = fluid_center.rhob;
+
+                    array[30] = fluid_center.rhoq;
+                    array[31] = fluid_center.rhos;
+
+                    for (int ii = 0; ii < 4; ii++)
+                        array[32+ii] = static_cast<float>(fluid_center.Wmunu[10+ii]);
+
                     if (DATA.output_vorticity == 1) {
                         for (int ii = 0; ii < 6; ii++) {
                             // no minus sign because its definition is
                             // opposite to the kinetic vorticity
-                            array[34+ii] = static_cast<float>(
-                                    fluid_aux_center.omega_kSP[ii]/TFO);
+                            array[36+ii] = fluid_aux_center.omega_kSP[ii]/TFO;
                             // the extra minus sign is from metric
                             // output quantities for g = (1, -1, -1, -1)
-                            array[40+ii] = static_cast<float>(
-                                    -fluid_aux_center.omega_k[ii]/TFO);
-                            array[46+ii] = static_cast<float>(
-                                    -fluid_aux_center.omega_th[ii]);
-                            array[52+ii] = static_cast<float>(
-                                    -fluid_aux_center.omega_T[ii]/TFO/TFO);
+                            array[42+ii] = -fluid_aux_center.omega_k[ii]/TFO;
+                            array[48+ii] = -fluid_aux_center.omega_th[ii];
+                            array[54+ii] = (-fluid_aux_center.omega_T[ii]
+                                            /TFO/TFO);
                         }
                         // the extra minus sign is from metric
                         // output quantities for g = (1, -1, -1, -1)
-                        for (int ii = 0; ii < 10; ii++) {
-                            array[58+ii] = static_cast<float>(
-                                    -fluid_aux_center.sigma_th[ii]);
-                        }
-                        for (int ii = 0; ii < 4; ii++) {
-                            array[68+ii] = static_cast<float>(
-                                    -fluid_aux_center.DbetaMu[ii]);
-                        }
+                        for (int ii = 0; ii < 10; ii++)
+                            array[60+ii] = -fluid_aux_center.sigma_th[ii];
+                        for (int ii = 0; ii < 4; ii++)
+                            array[70+ii] = -fluid_aux_center.DbetaMu[ii];
                     }
                     for (int i = 0; i < FOsize; i++)
                         s_file.write((char*) &(array[i]), sizeof(float));
@@ -729,6 +729,8 @@ int Evolve::FindFreezeOutSurface_Cornelius_XY(double tau, int ieta,
                 if (u_dot_dsigma > 0.) {
                     // only count the time-like contribution
                     FO_nBvsEta_[ieta] += u_dot_dsigma*fluid_center.rhob;
+                    FO_nQvsEta_[ieta] += u_dot_dsigma*fluid_center.rhoq;
+                    FO_nSvsEta_[ieta] += u_dot_dsigma*fluid_center.rhos;
                 }
             }
         }
@@ -850,8 +852,10 @@ void Evolve::FreezeOut_equal_tau_Surface_XY(double tau, int ieta,
                                                + uy_center*uy_center 
                                                + ueta_center*ueta_center);
 
-            // baryon density rho_b
+            // densities
             const double rhob_center = arena_current.rhob_[fieldIdx];
+            const double rhoq_center = arena_current.rhoq_[fieldIdx];
+            const double rhos_center = arena_current.rhos_[fieldIdx];
 
             // baryon diffusion current
             double qtau_center = arena_current.Wmunu_[10][fieldIdx];
@@ -912,7 +916,7 @@ void Evolve::FreezeOut_equal_tau_Surface_XY(double tau, int ieta,
 
             // get other thermodynamical quantities
             double e_local   = arena_current.e_[fieldIdx];
-            double T_local   = eos.get_temperature(e_local, rhob_center);
+            double T_local   = eos.get_temperature(e_local, rhob_center, rhoq_center, rhos_center);
             if (T_local < 0) {
                 music_message << "Evolve::FreezeOut_equal_tau_Surface: "
                               << "T_local = " << T_local
@@ -920,16 +924,16 @@ void Evolve::FreezeOut_equal_tau_Surface_XY(double tau, int ieta,
                 music_message.flush("error");
                 exit(1);
             }
-            double muB_local = eos.get_muB(e_local, rhob_center);
-            double muS_local = eos.get_muS(e_local, rhob_center);
-            double muQ_local = eos.get_muQ(e_local, rhob_center);
+            double muB_local = eos.get_muB(e_local, rhob_center, rhoq_center, rhos_center);
+            double muS_local = eos.get_muS(e_local, rhob_center, rhoq_center, rhos_center);
+            double muQ_local = eos.get_muQ(e_local, rhob_center, rhoq_center, rhos_center);
 
-            double pressure = eos.get_pressure(e_local, rhob_center);
+            double pressure = eos.get_pressure(e_local, rhob_center, rhoq_center, rhos_center);
             double eps_plus_p_over_T = (e_local + pressure)/T_local;
 
             // finally output results
             if (surface_in_binary) {
-                const int FOsize = 34 + DATA.output_vorticity*(24 + 14);
+                const int FOsize = 36 + DATA.output_vorticity*(24 + 14);
                 float array[FOsize];
                 array[0] = static_cast<float>(tau_center);
                 array[1] = static_cast<float>(x_center);
@@ -961,38 +965,36 @@ void Evolve::FreezeOut_equal_tau_Surface_XY(double tau, int ieta,
                 array[27] = static_cast<float>(Wetaeta_center);
                 array[28] = static_cast<float>(pi_b_center);
                 array[29] = static_cast<float>(rhob_center);
-                array[30] = static_cast<float>(qtau_center);
-                array[31] = static_cast<float>(qx_center);
-                array[32] = static_cast<float>(qy_center);
-                array[33] = static_cast<float>(qeta_center);
+                array[30] = static_cast<float>(rhoq_center);
+                array[31] = static_cast<float>(rhos_center);
+                array[32] = static_cast<float>(qtau_center);
+                array[33] = static_cast<float>(qx_center);
+                array[34] = static_cast<float>(qy_center);
+                array[35] = static_cast<float>(qeta_center);
                 if (DATA.output_vorticity == 1) {
                     for (int ii = 0; ii < 6; ii++) {
                         // no minus sign because its definition is opposite to
                         // the kinetic vorticity
-                        array[34+ii] = static_cast<float>(
-                                fluid_aux_center.omega_kSP[ii]/T_local);
+                        array[36+ii] = fluid_aux_center.omega_kSP[ii]/T_local;
                         // the extra minus sign is from metric
                         // output quantities for g = (1, -1, -1, -1)
-                        array[40+ii] = static_cast<float>(
-                                -fluid_aux_center.omega_k[ii]/T_local);
-                        array[46+ii] = static_cast<float>(
-                                -fluid_aux_center.omega_th[ii]);
-                        array[52+ii] = static_cast<float>(
-                                -fluid_aux_center.omega_T[ii]/T_local/T_local);
+                        array[42+ii] = -fluid_aux_center.omega_k[ii]/T_local;
+                        array[48+ii] = -fluid_aux_center.omega_th[ii];
+                        array[54+ii] = (-fluid_aux_center.omega_T[ii]
+                                        /T_local/T_local);
                     }
                     // the extra minus sign is from metric
                     // output quantities for g = (1, -1, -1, -1)
                     for (int ii = 0; ii < 10; ii++)
-                        array[58+ii] = static_cast<float>(
-                                -fluid_aux_center.sigma_th[ii]);
+                        array[60+ii] = -fluid_aux_center.sigma_th[ii];
                     for (int ii = 0; ii < 4; ii++)
-                        array[68+ii] = static_cast<float>(
-                                -fluid_aux_center.DbetaMu[ii]);
+                        array[70+ii] = -fluid_aux_center.DbetaMu[ii];
                 }
                 for (int i = 0; i < FOsize; i++) {
                     s_file.write((char*) &(array[i]), sizeof(float));
                 }
             } else {
+                // Not adapted to rhoq and rhos at pos 30 and 31.
                 s_file << std::scientific << std::setprecision(10) 
                        << tau_center     << " " << x_center          << " "
                        << y_center       << " " << eta_center        << " "
@@ -1018,6 +1020,8 @@ void Evolve::FreezeOut_equal_tau_Surface_XY(double tau, int ieta,
                 s_file << std::endl;
             }
             FO_nBvsEta_[ieta] += FULLSU[0]*rhob_center;
+            FO_nQvsEta_[ieta] += FULLSU[0]*rhoq_center;
+            FO_nSvsEta_[ieta] += FULLSU[0]*rhos_center;
         }
     }
     s_file.close();
@@ -1223,10 +1227,10 @@ int Evolve::FindFreezeOutSurface_boostinvariant_Cornelius(
                     fluid_center.Wmunu[9] = Wmunu_regulated[3][3];
 
                     // 3-dimension interpolation done
-                    double TFO = eos.get_temperature(epsFO, fluid_center.rhob);
-                    double muB = eos.get_muB(epsFO, fluid_center.rhob);
-                    double muS = eos.get_muS(epsFO, fluid_center.rhob);
-                    double muQ = eos.get_muQ(epsFO, fluid_center.rhob);
+                    double TFO = eos.get_temperature(epsFO, fluid_center.rhob, fluid_center.rhoq, fluid_center.rhos);
+                    double muB = eos.get_muB(epsFO, fluid_center.rhob, fluid_center.rhoq, fluid_center.rhos);
+                    double muS = eos.get_muS(epsFO, fluid_center.rhob, fluid_center.rhoq, fluid_center.rhos);
+                    double muQ = eos.get_muQ(epsFO, fluid_center.rhob, fluid_center.rhoq, fluid_center.rhos);
                     if (TFO < 0) {
                         music_message << "TFO=" << TFO
                                       << "<0. ERROR. exiting.";
@@ -1234,12 +1238,12 @@ int Evolve::FindFreezeOutSurface_boostinvariant_Cornelius(
                         exit(1);
                     }
 
-                    double pressure = eos.get_pressure(epsFO, fluid_center.rhob);
+                    double pressure = eos.get_pressure(epsFO, fluid_center.rhob, fluid_center.rhoq, fluid_center.rhos);
                     double eps_plus_p_over_T_FO = (epsFO + pressure)/TFO;
 
                     // finally output results !!!!
                     if (surface_in_binary) {
-                        float array[34];
+                        float array[36];
                         array[0] = static_cast<float>(tau_center);
                         array[1] = static_cast<float>(x_center);
                         array[2] = static_cast<float>(y_center);
@@ -1258,11 +1262,14 @@ int Evolve::FindFreezeOutSurface_boostinvariant_Cornelius(
                             array[18+ii] = static_cast<float>(fluid_center.Wmunu[ii]);
                         array[28] = fluid_center.pi_b;
                         array[29] = fluid_center.rhob;
+                        array[30] = fluid_center.rhoq;
+                        array[31] = fluid_center.rhos;
                         for (int ii = 0; ii < 4; ii++)
-                            array[30+ii] = static_cast<float>(fluid_center.Wmunu[10+ii]);
-                        for (int i = 0; i < 34; i++)
+                            array[32+ii] = static_cast<float>(fluid_center.Wmunu[10+ii]);
+                        for (int i = 0; i < 36; i++)
                             s_file.write((char*) &(array[i]), sizeof(float));
                     } else {
+                        // Not adapted to rhoq and rhos at pos 30 and 31.
                         s_file << std::scientific << std::setprecision(10)
                                << tau_center << " " << x_center << " "
                                << y_center << " " << eta_center << " "

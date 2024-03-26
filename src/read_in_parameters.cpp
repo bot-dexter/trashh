@@ -254,6 +254,7 @@ InitData read_in_parameters(std::string input_file) {
     // 10: finite muB EOS from A. Monnai (up to mu_B^4)
     // 11: finite muB EOS from Pasi
     // 12: finite muB EOS from A. Monnai (up to mu_B^6)
+    // 20: 4D Eos. 
     int tempwhichEOS = 2;
     tempinput = Util::StringFind4(input_file, "EOS_to_use");
     if (tempinput != "empty")
@@ -348,6 +349,43 @@ InitData read_in_parameters(std::string input_file) {
        parameter_list.alpha_max = 5;
     else
        parameter_list.alpha_max = 4;
+
+    int tempturn_on_QS = 0;
+    tempinput = Util::StringFind4(input_file, "Include_QS_Yes_1_No_0");
+    if (tempinput != "empty")
+        istringstream(tempinput) >> tempturn_on_QS;
+    parameter_list.turn_on_QS = tempturn_on_QS;
+    if (parameter_list.turn_on_QS == 1) {
+       parameter_list.alpha_max = 7;
+    } else if (parameter_list.turn_on_rhob == 1) {
+       parameter_list.alpha_max = 5;
+    } else {
+       parameter_list.alpha_max = 4;
+    }
+
+    int tempuse_BQ_ratios = 0;
+    tempinput = Util::StringFind4(input_file, "use_BQ_ratios");
+    if (tempinput != "empty")
+        istringstream(tempinput) >> tempuse_BQ_ratios;
+    parameter_list.use_BQ_ratios = tempuse_BQ_ratios;
+
+    int tempuse_rhoQS_to_rhoB_ratios = 0;
+    tempinput = Util::StringFind4(input_file, "use_rhoQS_to_rhoB_ratios");
+    if (tempinput != "empty")
+        istringstream(tempinput) >> tempuse_rhoQS_to_rhoB_ratios;
+    parameter_list.use_rhoQS_to_rhoB_ratios = tempuse_rhoQS_to_rhoB_ratios;
+    double temp_ratio_q = 0.4;
+    double temp_ratio_s = 0.;
+    if(parameter_list.use_rhoQS_to_rhoB_ratios == 1){
+        tempinput = Util::StringFind4(input_file, "ratio_q");
+            if (tempinput != "empty")
+                istringstream(tempinput) >> temp_ratio_q;
+        tempinput = Util::StringFind4(input_file, "ratio_s");
+            if (tempinput != "empty")
+                istringstream(tempinput) >> temp_ratio_s;
+    }
+    parameter_list.ratio_q = temp_ratio_q;
+    parameter_list.ratio_s = temp_ratio_s;
 
     // Eta_grid_size:  total length of box in eta direction (minus delta_eta)
     // e.g., neta=8 and eta_size=8 has 8 cells that run from eta=-4 to eta=3
@@ -1209,7 +1247,7 @@ void check_parameters(InitData &parameter_list, std::string input_file) {
         }
     }
 
-    if ((parameter_list.whichEOS > 19 && parameter_list.whichEOS != 91)
+    if ((parameter_list.whichEOS > 20 && parameter_list.whichEOS != 91)
         || parameter_list.whichEOS < 0) {
         music_message << "EOS_to_use unspecified or invalid option: "
                       << parameter_list.whichEOS;
