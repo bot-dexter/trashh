@@ -485,21 +485,22 @@ void HydroSourceStrings::get_hydro_energy_source(
             }
         }
 
-        double exp_xperp = (
-            (1. - eta_frac)*exp( - (x_dis_l*x_dis_l + y_dis_l*y_dis_l)
-                                /(2.*sigma_x*sigma_x))
-            + eta_frac*exp( - (x_dis_r*x_dis_r + y_dis_r*y_dis_r)
-                           /(2.*sigma_x*sigma_x))
-        );
-        double cosh_perp = (
-            cosh(preEqFlowFactor_*sqrt(it->x_perp*it->x_perp
-                                       + it->y_perp*it->y_perp)));
-        double sinh_perp = (
-            sinh(preEqFlowFactor_*sqrt(it->x_perp*it->x_perp
-                                       + it->y_perp*it->y_perp)));
-        double phi_perp = atan2(it->y_perp, it->x_perp);
 
-        double e_local = exp_tau*exp_xperp*exp_eta_s*it->norm;
+        double r_perp_l = sqrt(x_dis_l*x_dis_l + y_dis_l*y_dis_l);
+        double r_perp_r = sqrt(x_dis_r*x_dis_r + y_dis_r*y_dis_r);
+        double exp_xperp_l = (
+            (1. - eta_frac)*exp(-r_perp_l*r_perp_l/(2.*sigma_x_sq)));
+        double exp_xperp_r = eta_frac*exp(-r_perp_r*r_perp_r/(2.*sigma_x_sq));
+
+        double cosh_perp_l = cosh(preEqFlowFactor_*r_perp_l);
+        double cosh_perp_r = cosh(preEqFlowFactor_*r_perp_r);
+
+        double sinh_perp_l = sinh(preEqFlowFactor_*r_perp_l);
+        double sinh_perp_r = sinh(preEqFlowFactor_*r_perp_r);
+
+        double phi_perp_l = atan2(y_dis_l, x_dis_l);
+        double phi_perp_r = atan2(y_dis_r, x_dis_r);
+
         double Delta_eta = it->eta_s_right - it->eta_s_left;
         double denorm_safe = std::copysign(
                 std::max(Util::small_eps, std::abs(Delta_eta)), Delta_eta);
@@ -507,25 +508,27 @@ void HydroSourceStrings::get_hydro_energy_source(
                                      *(eta_s - it->eta_s_left));
         double cosh_long = cosh(y_string - eta_s);
         double sinh_long = sinh(y_string - eta_s);
-        //double cosh_perp = 1.0;
-        double local_eperp = prefactor_etas*prefactor_prep*e_local;
-        j_mu[0] += local_eperp*cosh_long*cosh_perp;
+
+        double e_local_l = exp_tau*exp_xperp_l*exp_eta_s*it->norm;
+        double e_local_r = exp_tau*exp_xperp_r*exp_eta_s*it->norm;
+
+        double local_eperp_l = prefactor_etas*prefactor_prep*e_local_l;
+        double local_eperp_r = prefactor_etas*prefactor_prep*e_local_r;
+
+        j_mu[0] += cosh_long*local_eperp_l*cosh_perp_l;
+        j_mu[0] += cosh_long*local_eperp_r*cosh_perp_r;
         if (std::isnan(j_mu[0])) {
-            std::cout << local_eperp << "  " << cosh_long << std::endl;
-            std::cout << prefactor_etas << "  " << prefactor_prep << "  "
-                      << e_local << "  " << cosh_perp
-                      << std::endl;
-            std::cout << exp_tau << "  " << exp_xperp << "  "
-                      << exp_eta_s << "  " << it->norm << std::endl;
-            std::cout << x_dis_l << "  " << x_dis_r << "  "
-                      << sigma_x << std::endl;
-            std::cout << it->x_pr << "  " << it->x_pr << "  " << eta_frac
-                      << "  " << it->eta_s_right << "  "
-                      << it->eta_s_left << std::endl;
+            std::cout << "j^0 is nan!" << std::endl;
+            exit(1);
         }
-        j_mu[1] += local_eperp*sinh_perp*cos(phi_perp);
-        j_mu[2] += local_eperp*sinh_perp*sin(phi_perp);
-        j_mu[3] += local_eperp*sinh_long*cosh_perp;
+        j_mu[1] += local_eperp_l*sinh_perp_l*cos(phi_perp_l);
+        j_mu[1] += local_eperp_r*sinh_perp_r*cos(phi_perp_r);
+
+        j_mu[2] += local_eperp_l*sinh_perp_l*sin(phi_perp_l);
+        j_mu[2] += local_eperp_r*sinh_perp_r*sin(phi_perp_r);
+
+        j_mu[3] += sinh_long*local_eperp_l*cosh_perp_l;
+        j_mu[3] += sinh_long*local_eperp_r*cosh_perp_r;
     }
 
     for (auto const&it: QCD_strings_remnant_list_current_tau) {
